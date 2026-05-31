@@ -413,6 +413,26 @@ sudo mihomo -t -d /etc/mihomo
 
 检查 `external-controller` 和 `external-ui` 配置，确认 UI 文件路径正确。
 
+**Q: WebUI 访问不一致，比如用的 zashboard，在浏览器中输入 `127.0.0.1:9090/ui` 显示的却是 metacubexd**
+
+请打开你的 config.yaml 配置文件，找到 external-ui 相关的控制块（通常在配置文件的最顶部几行），按照以下规范进行修改：
+
+```yaml
+# 1. 指定本地存放 WebUI 面板的文件夹名称（你可以自定义，例如叫 ui 或者是 zashboard）
+external-ui: ui
+
+# 2. 【核心】将下载地址显式指定为 zashboard 的最新打包发布地址
+# 推荐使用 dist-cdn-fonts.zip，这个版本去除了本地大字体文件，加载和下载速度极快
+external-ui-url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip"
+```
+
+修改完成后的操作：
+
+1. 保存配置文件。
+2. 彻底关闭并重启你的 mihomo 裸核（如果是在 Linux/OpenWrt 上，使用 systemctl restart mihomo 或者是软路由后台重启插件）。
+3. 关键一步：由于浏览器会深度缓存前端样式，请在浏览器中按下 Ctrl + Shift + Delete，清除该端口（如 127.0.0.1:9090）的所有缓存和站点数据。
+4. 换个无痕模式（隐身窗口）再次打开，看看是否恢复成了 Zashboard 那标志性的 Apple 风格/极简 UI。
+
 **Q: TUN 网卡没有创建**
 
 检查 systemd 权限配置，确保有 `CAP_NET_ADMIN`。查看日志：`sudo journalctl -fu mihomo.service`。
