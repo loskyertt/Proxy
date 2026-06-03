@@ -44,6 +44,7 @@ tun:
   stack: mixed
   dns-hijack:
     - any:53
+    - tcp://any:53
   auto-route: true
   auto-detect-interface: true
   endpoint-independent-nat: true
@@ -84,14 +85,6 @@ dns:
       - gfw
     ipcidr:
       - 240.0.0.0/4
-
-  proxy-server-nameserver:
-    - 223.5.5.5
-    - 114.114.114.114
-
-  direct-nameserver:
-    - 223.5.5.5
-    - 114.114.114.114
 
   nameserver-policy:
     "geosite:cn": 223.5.5.5
@@ -194,8 +187,6 @@ sniffer:
     HTTP:
       ports: [80, 8080-8880]
       override-destination: true
-    QUIC:
-      ports: [443, 8443]
   force-domain:
     - "+.claude.ai"
     - "+.anthropic.com"
