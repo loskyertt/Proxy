@@ -178,24 +178,24 @@ dns:
     - services.googleapis.cn
     - xn--ngstr-lra8j.com
 
-# ---- 流量嗅探（TUN 模式下域名规则必需） ----
-sniffer:
-  enable: true
-  sniff:
-    TLS:
-      ports: [443, 8443]
-    HTTP:
-      ports: [80, 8080-8880]
-      override-destination: true
-  force-domain:
-    - "+.claude.ai"
-    - "+.anthropic.com"
-    - "+.openai.com"
-    - "+.bing.com"
-    - "+.github.com"
-  skip-domain:
-    - "*.apple.com"
-    - Mijia Cloud
+# ---- 流量嗅探（fakeip下其实可以不用嗅探） ----
+# sniffer:
+#   enable: true
+#   sniff:
+#     TLS:
+#       ports: [443, 8443]
+#     HTTP:
+#       ports: [80, 8080-8880]
+#       override-destination: true
+#   force-domain:
+#     - "+.claude.ai"
+#     - "+.anthropic.com"
+#     - "+.openai.com"
+#     - "+.bing.com"
+#     - "+.github.com"
+#   skip-domain:
+#     - "*.apple.com"
+#     - Mijia Cloud
 
 # 4. 代理集合内容（用于自建节点）
 # proxies 暂空——节点全部来自 proxy-providers
