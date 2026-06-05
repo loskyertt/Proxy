@@ -1,112 +1,190 @@
-## ================= 说明 =================
-# - 此配置搭配 mihomo 内核使用
-# - 可以参考官方配置修改：https://github.com/MetaCubeX/mihomo/blob/Meta/docs/config.yaml
-## ================= 说明 =================
+## =====================================================================
+##  mihomo 裸核配置文件 — Windows TUN 模式
+## =====================================================================
+##  适用场景: Windows 系统下使用裸核 mihomo 运行 TUN 模式全局代理
+##  参考文档: https://wiki.metacubex.one/
+##  参考配置: https://github.com/MetaCubeX/mihomo/blob/Meta/docs/config.yaml
+## =====================================================================
 
-# 1. 全局配置
+## ================= 1. 全局配置 =================
+
+# 混合代理端口（HTTP + SOCKS5 共用）
 mixed-port: 7890
-bind-address: "*"
+
+# SOCKS5 独立端口（某些应用需要单独指定 SOCKS5 代理时使用）
+socks-port: 7891
+
+# 允许局域网设备连接此代理
 allow-lan: true
+bind-address: "*"
+
+# 运行模式: rule（规则匹配）/ global（全局代理）/ direct（全局直连）
 mode: rule
+
+# 日志级别: silent / error / warning / info / debug
 log-level: info
+
+# API 外部控制（裸核场景通过 http://127.0.0.1:9090/ui 访问面板）
 external-controller: 127.0.0.1:9090
 secret: ""
+
+# API CORS 配置（允许从 Web 面板跨域访问 API）
+external-controller-cors:
+  allow-origins:
+    - '*'
+  allow-private-network: true
+
+# 外部 Web 管理面板（zashboard）
 external-ui: ./ui
-find-process-mode: off
+external-ui-url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip"
+
+# 进程匹配（Windows 下建议 strict 以匹配进程名规则）
+find-process-mode: strict
+
+# TCP 并发 — 使用 DNS 解析出的所有 IP 并发连接，取最先成功的
 tcp-concurrent: true
+
+# IPv6 支持
 ipv6: true
+
+# TCP Keep-Alive 间隔（秒）
 keep-alive-interval: 15
+
+# 统一延迟显示 — 消除不同类型节点（直连/代理）的握手延迟差异
 unified-delay: true
+
+# 全局客户端 TLS 指纹（有助于降低 TLS 握手被识别概率）
+global-client-fingerprint: chrome
+
+# GEO 数据模式（true 使用 dat 格式）
 geodata-mode: true
+
+# GEO 数据加载模式（memconservative 为内存受限设备优化）
 geodata-loader: memconservative
+
+# GEO 数据自动更新
 geo-auto-update: true
 geo-update-interval: 24
-global-ua: clash.meta
-etag-support: true
 
+# 自定义 GEO 数据下载地址（需代理访问 CDN）
 geox-url:
   geoip: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
   geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
   asn: "https://github.com/xishang0128/geoip/releases/download/latest/GeoLite2-ASN.mmdb"
 
-# fakeip 本地存储，省略DNS查询
+# 外部资源下载 UA
+global-ua: clash.meta
+
+# ETag 支持（减少重复下载）
+etag-support: true
+
+# 本地状态缓存
 profile:
-  store-selected: true
-  store-fake-ip: true
+  store-selected: true   # 重启后记住节点选择
+  store-fake-ip: true    # 保存 fake-ip 映射，避免重复 DNS 查询
 
-socks-port: 7891
 
-# 2. Tun 配置
+## ================= 2. TUN 配置 =================
+##
+##  Windows 裸核 TUN 模式关键说明:
+##    1. mihomo 需要以管理员权限运行（TUN 需要创建虚拟网卡）
+##    2. 如果开启了 Windows 防火墙，需在防火墙中放行 mihomo 内核:
+##       设置 → Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙
+##       → 添加 mihomo.exe（或手动添加放行规则）
+##    3. mixed 栈 = TCP 用 system 栈 + UDP 用 gvisor 栈，Windows 下推荐
+
 tun:
   enable: true
-  device: Meta
-  stack: mixed
+  device: Meta                       # TUN 网卡名称
+  stack: mixed                       # TCP 走 system 栈, UDP 走 gvisor 栈
   dns-hijack:
-    - any:53
-    - tcp://any:53
-  auto-route: true
-  auto-detect-interface: true
-  endpoint-independent-nat: true
+    - any:53                         # UDP DNS 劫持
+    - tcp://any:53                   # TCP DNS 劫持（防止部分应用绕过）
+  auto-route: true                   # 自动设置全局路由
+  auto-detect-interface: true        # 自动检测出口网卡
+  strict-route: true                 # ★ Windows 下启用防火墙规则防止 DNS 泄露
+  mtu: 1500                          # 最大传输单元
+  endpoint-independent-nat: false    # 禁用端点无关 NAT（开启会有性能损耗）
 
-# 3. DNS 配置
+  # 排除常见虚拟网卡网段（如 Docker、Hyper-V、VMware 等虚拟网卡）
+  # 按需取消注释并调整具体网段
+  # route-exclude-address:
+  #   - 172.16.0.0/12    # Docker 默认网段
+  #   - 192.168.0.0/16   # 内网网段（一般不需要排除，仅当有冲突时）
+  #   - 10.0.0.0/8       # 内网网段
+  #   - 100.64.0.0/10    # CGNAT 网段
+
+
+## ================= 3. DNS 配置 =================
+
 dns:
   enable: true
-  prefer-h3: true
-  ipv6: true
-  listen: ":53"
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.1/16
+  listen: ":53"                      # DNS 监听地址（TUN dns-hijack 劫持到此端口）
+  enhanced-mode: fake-ip             # 使用 Fake-IP 模式
+  fake-ip-range: 198.18.0.1/16       # Fake-IP 地址段
 
+  # DNS 缓存算法（arc = Adaptive Replacement Cache，比默认 lru 更高效）
+  cache-algorithm: arc
+
+  # 使用配置中的 hosts 和系统 hosts
   use-hosts: true
   use-system-hosts: true
 
+  # DNS over HTTP/3 优先
+  # 在 mixed 栈下 (UDP=gvisor) QUIC/H3 稳定性差, 每次尝试 ~3s 超时后才回退到 H2
+  # 导致所有 DoH 查询累加严重延迟, 故关闭
+  prefer-h3: false
+
+  # IPv6 解析
+  ipv6: true
+
+  # 默认 DNS — 用于解析其他 DNS 服务器的域名
+  # 注意: 必须为 IP 地址（不能是域名）
+  # 去掉 8.8.8.8 — 国内 UDP 到 8.8.8.8 常被限速/抢答, 且只用两条国内 IP 就足够
+  # 解析到 doh.pub / dns.alidns.com 等 DNS 服务器域名
   default-nameserver:
     - 114.114.114.114
     - 223.5.5.5
-    - 8.8.8.8
 
+  # 主 DNS 服务器
+  # fake-ip 模式下不需要 fallback / fallback-filter / nameserver-policy:
+  #   国内加密 DNS (DoH) 返回的正确 IP 足以建立 fake-ip 映射,
+  #   代理服务器会自行在远端解析域名, 无需本地做 DNS 回退判断.
+  #   详见 Meta-Docs 官方示例与 Mihomo 参考配置.
   nameserver:
-    - 114.114.114.114
-    - 8.8.8.8
-    - tls://223.5.5.5:853
+    - https://doh.pub/dns-query      # DNSPod DoH (国内, 加密, 稳定)
+    - https://dns.alidns.com/dns-query # 阿里 DoH (国内, 加密, 稳定)
+
+  # 代理节点域名解析 — 与 nameserver 相同, 确保代理节点域名可解析
+  proxy-server-nameserver:
     - https://doh.pub/dns-query
-    - https://dns.alidns.com/dns-query#h3=true
-    - system
+    - https://dns.alidns.com/dns-query
 
-  fallback:
-    - 8.8.8.8
-    - 1.1.1.1
+  # DNS 直连（direct 规则使用）
+  direct-nameserver:
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
 
-  fallback-filter:
-    geoip: true
-    geoip-code: CN
-    geosite:
-      - gfw
-    ipcidr:
-      - 240.0.0.0/4
-
-  nameserver-policy:
-    "geosite:cn": 223.5.5.5
-    "geosite:!cn": 8.8.8.8
-
+  # Fake-IP 过滤列表 — 匹配的域名不返回 Fake-IP，直接使用真实 IP
+  # 主要包含: 需要正确获取真实 IP 才能正常工作的服务
   fake-ip-filter:
+    ## 局域网/本地
     - "*.lan"
     - "*.localdomain"
-    - "*.pool.ntp.org"
-    - "+.ntp.org"
+    - "*.local"
+    - "*.internal"
+    - "*.bogon"
+    - "home.arpa"
+    - "+.m2m"
     - "localhost"
     - "127.*"
-    - "*.battlenet.com.cn"
-    - "*.battlenet.com"
-    - "*.blzstatic.cn"
-    - "*.battle.net"
-    - "*.linksys.com"
-    - "*.linksyssmartwifi.com"
-    - swscan.apple.com
-    - mesu.apple.com
-    - "*.msftconnecttest.com"
-    - "*.msftncsi.com"
+    - "::1"
+
+    ## NTP 时间同步
+    - "*.pool.ntp.org"
+    - "+.pool.ntp.org"
+    - "+.ntp.org"
     - "time.*.com"
     - "time.*.gov"
     - "time.*.edu.cn"
@@ -128,8 +206,31 @@ dns:
     - "ntp7.*.com"
     - "*.time.edu.cn"
     - "*.ntp.org.cn"
-    - "+.pool.ntp.org"
     - time1.cloud.tencent.com
+
+    ## Microsoft Windows 连接检测 / 更新
+    - "*.msftconnecttest.com"
+    - "*.msftncsi.com"
+    - "dns.msftncsi.com"
+
+    ## Apple
+    - swscan.apple.com
+    - mesu.apple.com
+    - "+.push.apple.com"
+
+    ## 游戏
+    - "*.battlenet.com.cn"
+    - "*.battlenet.com"
+    - "*.blzstatic.cn"
+    - "*.battle.net"
+    - "+.srv.nintendo.net"
+    - "+.playstation.net"
+    - "+.playstation.com"
+    - "+.stun.playstation.net"
+    - "xbox.*.microsoft.com"
+    - "+.xboxlive.com"
+
+    ## 音乐
     - "+.music.163.com"
     - "*.126.net"
     - musicapi.taihe.com
@@ -144,16 +245,8 @@ dns:
     - report.url.cn
     - "*.xiami.com"
     - "+.music.migu.cn"
-    - "+.srv.nintendo.net"
-    - "+.playstation.net"
-    - "+.playstation.com"
-    - "+.stun.playstation.net"
-    - "xbox.*.microsoft.com"
-    - "+.xboxlive.com"
-    - localhost.ptlogin2.qq.com
-    - proxy.golang.org
-    - "stun.*.*"
-    - "stun.*.*.*"
+
+    ## 京东 / 电商 CDN
     - "*.mcdn.bilivideo.cn"
     - "*.bilibili.com"
     - "*.1huizhan.com"
@@ -161,11 +254,24 @@ dns:
     - "*.300hu.com"
     - "*.360buy.cn"
     - "*.360buy.com"
-    - "*.360buy.com.cn"
     - "*.360buyimg.com"
     - "*.360buyinternational.com"
     - "*.360top.com"
     - "*.jd.com"
+
+    ## STUN / P2P
+    - "*.stun.*.*"
+    - "stun.*.*"
+    - "stun.*.*.*"
+    - "*.turn.twilio.com"
+    - "*.stun.twilio.com"
+    - stun.syncthing.net
+
+    ## 其他
+    - proxy.golang.org
+    - localhost.ptlogin2.qq.com
+    - services.googleapis.cn
+    - xn--ngstr-lra8j.com
     - t-mobile.com
     - crl.t-mobile.com
     - eas3.msg.t-mobile.com
@@ -175,35 +281,55 @@ dns:
     - epdg.epc.mnc260.mcc310.pub.3gppnetwork.org
     - ss.epdg.epc.mnc260.mcc310.pub.3gppnetwork.org
     - ss.epdg.epc.geo.mnc260.mcc310.pub.3gppnetwork.org
-    - services.googleapis.cn
-    - xn--ngstr-lra8j.com
+    - injections.adguard.org
+    - local.adguard.org
 
-# ---- 流量嗅探（fakeip下其实可以不用嗅探） ----
-# sniffer:
-#   enable: true
-#   sniff:
-#     TLS:
-#       ports: [443, 8443]
-#     HTTP:
-#       ports: [80, 8080-8880]
-#       override-destination: true
-#   force-domain:
-#     - "+.claude.ai"
-#     - "+.anthropic.com"
-#     - "+.openai.com"
-#     - "+.bing.com"
-#     - "+.github.com"
-#   skip-domain:
-#     - "*.apple.com"
-#     - Mijia Cloud
+    ## Steam 缓存 / CDN
+    - lancache.steamcontent.com
 
-# 4. 代理集合内容（用于自建节点）
-# proxies 暂空——节点全部来自 proxy-providers
 
-# 5. 代理组
+## ================= 4. 流量嗅探 =================
+##
+##  TUN 模式下，开启嗅探可以让 mihomo 通过分析流量特征识别协议，
+##  即使用户访问的是 IP（而非域名）也能正确匹配规则。
+##  注意: QUIC 嗅探在某些环境下可能导致 UDP 卡顿，默认关闭。
+
+sniffer:
+  enable: true
+  sniff:
+    TLS:
+      ports: [443, 8443]
+    HTTP:
+      ports: [80, 8080-8880]
+      override-destination: true
+  # 对这些域名强制进行嗅探（即使 DNS 已经解析出域名）
+  force-domain:
+    - "+.claude.ai"
+    - "+.anthropic.com"
+    - "+.openai.com"
+    - "+.bing.com"
+    - "+.github.com"
+    - "+.copilot.microsoft.com"
+  # 跳过嗅探的域名
+  skip-domain:
+    - Mijia Cloud
+    - "+.apple.com"
+    - "+.push.apple.com"
+
+
+## ================= 5. 代理节点 =================
+# 自建节点写在此处（订阅节点在 proxy-providers 中定义）
+# 具体节点语法请参考 MetaDocs: https://wiki.metacubex.one/config/proxies/
+proxies:
+
+
+## ================= 6. 代理组 =================
+
 proxy-groups:
+  # --- 自动选择 ---
   - name: "Auto"
     type: url-test
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Auto.png
     tolerance: 50
     use:
       - provider1
@@ -212,16 +338,20 @@ proxy-groups:
     interval: 300
     lazy: false
 
+  # --- 主代理出口 ---
   - name: "PROXY"
     type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/mini/Proxy.png
     proxies:
       - "Auto"
     use:
       - provider1
       - provider3
 
+  # --- 按服务分组的策略组 ---
   - name: "OpenAI"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/OpenAI.png
     proxies:
       - "PROXY"
     use:
@@ -229,6 +359,7 @@ proxy-groups:
 
   - name: "Claude"
     type: select
+    icon: https://raw.githubusercontent.com/f3liiix/clash/refs/heads/main/icons/Claude.png
     proxies:
       - "PROXY"
     use:
@@ -236,14 +367,15 @@ proxy-groups:
 
   - name: "GitHub"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Global.png
     proxies:
       - "PROXY"
     use:
       - provider1
-      - provider2
 
   - name: "Netflix"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Netflix.png
     proxies:
       - "PROXY"
     use:
@@ -251,6 +383,7 @@ proxy-groups:
 
   - name: "Disney"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/DisneyPlus.png
     proxies:
       - "PROXY"
     use:
@@ -258,6 +391,7 @@ proxy-groups:
 
   - name: "Youtube"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/YouTube.png
     proxies:
       - "PROXY"
     use:
@@ -265,6 +399,7 @@ proxy-groups:
 
   - name: "Spotify"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Spotify.png
     proxies:
       - "PROXY"
     use:
@@ -272,6 +407,7 @@ proxy-groups:
 
   - name: "Tiktok"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/TikTok.png
     proxies:
       - "PROXY"
     use:
@@ -279,6 +415,7 @@ proxy-groups:
 
   - name: "Telegram"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Telegram.png
     proxies:
       - "PROXY"
     use:
@@ -286,6 +423,7 @@ proxy-groups:
 
   - name: "Twitter"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Twitter.png
     proxies:
       - "PROXY"
     use:
@@ -293,6 +431,7 @@ proxy-groups:
 
   - name: "Copilot"
     type: select
+    icon: https://raw.githubusercontent.com/Orz-3/mini/master/Color/Microsoft.png
     proxies:
       - "PROXY"
     use:
@@ -300,13 +439,17 @@ proxy-groups:
 
   - name: "OneDrive"
     type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/OneDrive.png
     proxies:
       - "PROXY"
     use:
       - provider3
 
-# 6. 代理集合
+
+## ================= 7. 代理供应商 =================
+
 proxy-providers:
+  ## 飞鸟云（50G/月）
   provider1:
     type: http
     url: "填入你的代理链接"
@@ -318,6 +461,7 @@ proxy-providers:
       timeout: 5000
       url: https://www.gstatic.com/generate_204
 
+  ## 飞鸟云（400G 不限时）
   provider2:
     type: http
     url: "填入你的代理链接"
@@ -329,6 +473,7 @@ proxy-providers:
       timeout: 5000
       url: https://www.gstatic.com/generate_204
 
+  ## 一元机场（500G/月）
   provider3:
     type: http
     url: "填入你的代理链接"
@@ -340,7 +485,10 @@ proxy-providers:
       timeout: 5000
       url: https://www.gstatic.com/generate_204
 
-# 7. 规则集
+
+## ================= 8. 规则集 =================
+## 使用 Loyalsoldier 维护的规则集
+
 rule-providers:
   lancidr:
     type: http
@@ -391,24 +539,43 @@ rule-providers:
     path: ./ruleset/gfw.yaml
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/gfw.txt"
 
-# 8. 自定义规则
+
+## ================= 9. 分流规则 =================
+
 rules:
+  # --- 应用程序直连（进程名匹配，仅 Windows/macOS/Linux 支持 find-process-mode） ---
   - RULE-SET,applications,DIRECT
+
+  # --- 私有 / 内网直连 ---
   - RULE-SET,private,DIRECT
+  - RULE-SET,lancidr,DIRECT
+  - GEOIP,private,DIRECT,no-resolve
+
+  # --- Apple 服务直连（iCloud、Apple 一般直连速度更优） ---
   - RULE-SET,icloud,DIRECT
   - RULE-SET,apple,DIRECT
+
+  # --- 国内站点直连 ---
   - GEOSITE,microsoft@cn,DIRECT
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
   - GEOSITE,cn,DIRECT
+  - RULE-SET,cncidr,DIRECT
+  - GEOIP,CN,DIRECT
+
+  # --- 自定义国内域名直连 ---
   - DOMAIN,flutter-io.cn,DIRECT
   - DOMAIN,mirrors.tuna.tsinghua.edu.cn,DIRECT
   - DOMAIN,chat.qwen.ai,DIRECT
+
+  # --- Claude（精确匹配，前置以确保优先级） ---
   - DOMAIN-SUFFIX,claude.ai,Claude
   - DOMAIN-SUFFIX,anthropic.com,Claude
   - DOMAIN,api.anthropic.com,Claude
   - DOMAIN-SUFFIX,claudeapis.com,Claude
   - DOMAIN-KEYWORD,claude,Claude
+
+  # --- GitHub ---
   - DOMAIN-SUFFIX,github.com,GitHub
   - DOMAIN-SUFFIX,github.io,GitHub
   - DOMAIN-SUFFIX,githubusercontent.com,GitHub
@@ -416,12 +583,18 @@ rules:
   - DOMAIN-SUFFIX,githubapp.com,GitHub
   - DOMAIN-SUFFIX,github.blog,GitHub
   - DOMAIN-SUFFIX,github.dev,GitHub
-  - DOMAIN,xn--ngstr-lra8j.com,PROXY
+  - RULE-SET,direct,DIRECT   # direct.txt 中的域名直连
+
+  # --- Google 服务代理 ---
   - DOMAIN,services.googleapis.cn,PROXY
   - DOMAIN,mtalk.google.com,PROXY
+
+  # --- IP/DNS 泄漏测试站点 ---
   - DOMAIN-SUFFIX,voidsec.com,PROXY
   - DOMAIN-SUFFIX,browserleaks.com,PROXY
   - DOMAIN-SUFFIX,ipleak.net,PROXY
+
+  # --- Copilot / Bing AI ---
   - DOMAIN,api.msn.com,Copilot
   - DOMAIN,assets.msn.com,Copilot
   - DOMAIN,copilot.microsoft.com,Copilot
@@ -444,8 +617,12 @@ rules:
   - DOMAIN,www2.bing.com,Copilot
   - DOMAIN,www.bingapis.com,Copilot
   - DOMAIN-SUFFIX,edge.microsoft.com,Copilot
+
+  # --- 广告 / 遥测拦截 ---
   - DOMAIN,events.data.microsoft.com,REJECT
   - GEOSITE,adobe,REJECT
+
+  # --- 按 GEOSITE 分流 ---
   - GEOSITE,openai,OpenAI
   - GEOSITE,onedrive,OneDrive
   - GEOSITE,youtube,Youtube
@@ -460,14 +637,13 @@ rules:
   - GEOSITE,category-scholar-!cn,PROXY
   - GEOSITE,geolocation-!cn,PROXY
   - RULE-SET,gfw,PROXY
-  - RULE-SET,direct,DIRECT
-  - RULE-SET,lancidr,DIRECT
-  - GEOIP,private,DIRECT,no-resolve
-  - RULE-SET,cncidr,DIRECT
-  - GEOIP,CN,DIRECT
+
+  # --- GeoIP 兜底 — 直接匹配 IP 归属 ---
   - GEOIP,telegram,Telegram,no-resolve
   - GEOIP,netflix,Netflix,no-resolve
   - GEOIP,google,PROXY,no-resolve
   - GEOIP,twitter,Twitter,no-resolve
   - GEOIP,JP,PROXY,no-resolve
+
+  # --- 最终兜底: 所有未匹配的走代理 ---
   - MATCH,PROXY
